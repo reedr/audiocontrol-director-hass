@@ -53,8 +53,8 @@ async def async_setup_entry(
     if system_status is not None:
         add_entities([DirectorDevice(coordinator)])
         add_entities(
-            OutputDevice(coordinator, output_id)
-            for output_id, output in system_status.outputs.items()
+            OutputDevice(coordinator, output_status.output_id)
+            for output_status in system_status.outputs.values()
         )
 
 
@@ -176,17 +176,14 @@ class OutputDevice(CoordinatorEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.SELECT_SOURCE
     )
 
-    _available_inputs = InputID.all()
-    _input_id_to_input_name = dict(map(lambda i: (i, i.name), _available_inputs))
-    _input_name_to_input_id = {v: k for k, v in _input_id_to_input_name.items()}
-
     def __init__(
         self, coordinator: AudioControlDirectorCoordinator, output_id: OutputID
     ) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
 
-        output_status = self.coordinator.data["system_status"].outputs[str(output_id)]
+        system_status = self.coordinator.data["system_status"]
+        output_status = system_status.outputs[str(output_id)]
         self.output_id = output_id
 
         self._attr_unique_id = (
@@ -194,7 +191,7 @@ class OutputDevice(CoordinatorEntity, MediaPlayerEntity):
         )
         self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
         self._attr_name = output_status.name
-        self._attr_source_list = list(OutputDevice._input_name_to_input_id.keys())
+        self._attr_source_list = system_status.input_names
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._attr_unique_id)},
@@ -228,11 +225,11 @@ class OutputDevice(CoordinatorEntity, MediaPlayerEntity):
 
     async def async_select_source(self, source: str) -> None:
         """Set input source."""
-        if source not in OutputDevice._input_name_to_input_id:
+        if source not in self._attr_source_list:
             return
 
         await self.coordinator.async_set_output_input(
-            self.output_id, OutputDevice._input_name_to_input_id[source]
+            self.output_id, self.coordinator.data["system_status"].inputs[source]
         )
         self._attr_source = source
         self.async_write_ha_state()
